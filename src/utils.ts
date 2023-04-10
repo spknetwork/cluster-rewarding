@@ -11,3 +11,8 @@ export function getReportPermlink() {
     const date = new Date()
     return `daily-cluster-validation-report-${date.getUTCMonth() + 1}${date.getUTCDate()}${date.getUTCFullYear()}`
 }
+
+export function getRoundId() {
+    const date = new Date()
+    return `${date.getUTCMonth() + 1}-${date.getUTCDate()}-${date.getUTCFullYear()}`
+}

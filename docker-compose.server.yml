@@ -9,31 +9,20 @@ services:
     depends_on:
       - ipfs
     networks:
-      - cluster-rewarding-client
+      - cluster-rewarding-server
     env_file:
       - .env
     environment:
       IPFS_HOST: ipfs:5001
-
-  ipfs-cluster:
-    container_name: 3speak-cluster
-    image: ipfs/ipfs-cluster:1.0.6
-    entrypoint:
-      - /usr/local/bin/ipfs-cluster-follow
-      - 3speak-cluster 
-      - run 
-      - --init https://ipfs.3speak.tv/ipns/ipfs-cluster.3speak.tv
-    networks:
-      - cluster-rewarding-client
-  ipfs-cluster-client:
+  ipfs:
     container_name: ipfs-cluster
     image: ipfs/kubo:v0.19.0
     command:
       - daemon
       - --enable-pubsub-experiment
     networks:
-      - cluster-rewarding-client
+      - cluster-rewarding-server
 
 networks:
-  cluster-rewarding-client:
+  cluster-rewarding-server:
     driver: bridge

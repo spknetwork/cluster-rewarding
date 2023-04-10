@@ -5,9 +5,9 @@ import Axios from 'axios'
 import type PQueue from 'p-queue'
 import CID from 'cids'
 import { PrivateKey } from '@hiveio/dhive'
-// import { CID } from 'multiformats/cid'
-import { MONGODB_URL, mongoOffchan } from './db'
-import { getReportPermlink, HiveClient } from '../utils'
+import NodeSchedule from 'node-schedule'
+import { Models, MONGODB_URL, mongoOffchan } from './db'
+import { getReportPermlink, getRoundId, HiveClient } from '../utils'
 
 const IPFS_CLUSTER_URL = process.env.IPFS_CLUSTER_URL
 
@@ -33,6 +33,8 @@ export class CoreService {
   peers: Collection
   validationRounds: Collection
   validationResults: Collection
+  locks: Collection
+  _pinRefreshRunning: boolean
   // validationStats: Collection
 
   async getPeers() {
@@ -91,6 +93,7 @@ export class CoreService {
   }
 
   async refreshPins() {
+    this._pinRefreshRunning = true;
     // await this.pins.deleteMany({})
 
     const response = await Axios.get(`${IPFS_CLUSTER_URL}/pins`, {
@@ -109,6 +112,7 @@ export class CoreService {
             cluster_id: key,
           }
         })
+        json.round_id = getRoundId()
         await this.pins.insertOne(json)
       } catch (ex) {
         console.log(ex)
@@ -116,14 +120,25 @@ export class CoreService {
         //End
       }
     }
+    this._pinRefreshRunning = false;
   }
 
   async runAllocationVerification() {
+    await this.validationResults.deleteMany({})
     const startTime = new Date()
-    const round_id = `${startTime.getUTCMonth() + 1}-${startTime.getUTCDate()}-${startTime.getUTCFullYear()}`
+    const round_id = getRoundId()
     const peers = await this.peers.distinct('id', {
       trusted: false,
     })
+    const roundInfo = await this.validationRounds.findOne({
+      round_id
+    })
+    if(roundInfo) {
+      return; //Round already generated.
+    }
+    if(this._pinRefreshRunning) {
+      return;
+    }
     // const peersIpfs = await this.peers.distinct('ipfs.id', {
     //   trusted: false,
     // })
@@ -138,6 +153,7 @@ export class CoreService {
               status: 'pinned',
             },
           },
+          round_id
         },
         {
           limit: 100,
@@ -187,15 +203,39 @@ export class CoreService {
     }
     await this.dhtQueue.onIdle()
     console.log('round done in', (new Date().getTime() - startTime.getTime()) / 1000)
+    await this.validationRounds.insertOne({
+      round_id,
+      start_at: startTime,
+      finish_at: new Date()
+    })
   }
 
   async distributesVotes() {
+    const voteSlots = 3;
+
+    const round_id = getRoundId()
+    const roundInfo = await this.validationRounds.findOne({
+      round_id
+    })
+    
+    if(!roundInfo) {
+      return;
+    }
+
     const peersIpfs = await this.peers.distinct('ipfs.id', {
       trusted: false,
     })
-    const peerMap: Record<string, string> = {}
+    const peerMap: Record<string, {
+      totalStoredFiles: number
+      passCount: number
+      failCount: number
+      fileWeight: number
+      username: string
+    }> = {}
+    let totalRedundantCopies = 0;
     for(let peerId of peersIpfs) {
       
+      let username;
       for await(let result of this.ipfs.name.resolve(peerId)) {
         // console.log(peerId)
         if(result !== "/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn") {
@@ -204,7 +244,7 @@ export class CoreService {
           const data = await this.ipfs.dag.get(IPFS.CID.parse(result.split('/')[2]))
           console.log(data.value)
           if(data.value) {
-            peerMap[peerId] = data.value.username
+            username = data.value.username
           }
         }
       }
@@ -216,17 +256,45 @@ export class CoreService {
         node_id: peerId,
         status: "fail"
       })
-      const vote_weight = passCount / (passCount + failCount)
-      console.log(vote_weight)
+      const totalStoredFiles = await this.pins.countDocuments({
+        peer_map: {
+          $elemMatch: {
+            cluster_id: {
+              $in: peerId,
+            },
+            status: 'pinned',
+          },
+        },
+        round_id: getRoundId()
+      })
+      console.log(totalStoredFiles)
+      const passfail = passCount / (passCount + failCount)
+      let power = Math.min((passfail / 0.25), 1)
+      
+      const fileWeight = power * totalStoredFiles
+      totalRedundantCopies = fileWeight + totalRedundantCopies;
+      
+      // const vote_weight = passCount / (passCount + failCount)
+      peerMap[peerId] = {
+        passCount,
+        failCount,
+        totalStoredFiles,
+        fileWeight,
+        username
+      }
+    }
+    for(let obj of Object.values(peerMap)) {
+      const share = obj.fileWeight / totalRedundantCopies
+      const vote_weight = Math.round(Math.min((share * voteSlots), 1) * 10_000)
       try {
         const comments = await HiveClient.database.call('get_content_replies', [process.env.PARENT_REPORT_ACCOUNT, getReportPermlink()])
         for(let post of comments) {
-          if(post.author === peerMap[peerId]) {
+          if(post.author === obj.username) {
             const voteOp = await HiveClient.broadcast.vote({
               voter: "threespeak",
               author: post.author,
               permlink: post.permlink,
-              weight: Math.round(vote_weight * 10_000)
+              weight: vote_weight
             }, PrivateKey.from(process.env.VOTER_ACCOUNT_POSTING))
             console.log(voteOp, vote_weight)
           }
@@ -235,13 +303,32 @@ export class CoreService {
         // console.log(ex)
         // console.log(Object.values(ex.jse_info).join(''))
       }
-      console.log({
-        passCount,
-        failCount
-      })
     }
   }
 
+  async createReportParent() {
+    console.log('creating parent post', [process.env.PARENT_REPORT_ACCOUNT, getReportPermlink()])
+    try {
+      const data = await HiveClient.database.call('get_content', [process.env.PARENT_REPORT_ACCOUNT, getReportPermlink()])
+      console.log(data)
+    } catch(ex) {
+      const date = new Date();
+      // console.log(ex)
+      const postResult = await HiveClient.broadcast.comment({
+          author: process.env.HIVE_ACCOUNT,
+          title: `Daily cluster validation report (${date.getUTCMonth() + 1}/${date.getUTCDate()}/${date.getUTCFullYear()})`,
+          body: 'Comments below will contain basic ipfs cluster reporting information. Qualifying comments will be upvoted by @threespeak',
+          json_metadata: JSON.stringify({
+              tags: ['threespeak', 'cluster-rewarding'],
+              app: "cluster-rewarding/0.1.0"
+          }),
+          parent_author: process.env.PARENT_REPORT_ACCOUNT,
+          parent_permlink: '',
+          permlink: getReportPermlink()
+      }, PrivateKey.fromString(process.env.PARENT_REPORT_ACCOUNT_POSTING))
+      console.log(postResult)
+    }
+  }
 
   async start() {
     const url = MONGODB_URL
@@ -257,18 +344,27 @@ export class CoreService {
     this.peers = db.collection('peers')
     this.validationRounds = db.collection('validation_rounds')
     this.validationResults = db.collection('validation_results')
+    this.locks = db.collection('locks')
     // this.validationStats = db.collection('validation_stats')
-
+    
+    // await this.createReportParent()
     try {
-      await this.pins.createIndex({
-        'metadata.key': -1,
-      })
-    } catch {}
+      for(let model of Object.values(Models)) {
+        await model.syncIndexes()
+      }
+    } catch (ex) {
+      console.log(ex)
+    }
 
     // await this.distributesVotes()
-    await this.runAllocationVerification()
-    // await this.getPeers()
-    // await this.refreshPins()
+    
+
+    
+    // NodeSchedule.registerJob('0 * * * *', this.getPeers); //Doesn't need round check
+    NodeSchedule.registerJob('0 */6 * * *', this.refreshPins)
+    NodeSchedule.registerJob('0 */3 * * *', this.runAllocationVerification)
+    NodeSchedule.registerJob('0 */3 * * *', this.createReportParent)
+    NodeSchedule.registerJob('0 */3 * * *', this.distributesVotes)
 
     // for await (let res of this.ipfs.dht.findProvs(
     //   'QmU1k7SUq1jBhWL1EoL5R1mk44dVvSm5QkScfpsLavWmoC',
