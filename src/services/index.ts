@@ -1,12 +1,14 @@
 import { Collection, Db, MongoClient, Timestamp } from 'mongodb'
 import 'dotenv/config'
 import * as IPFS from 'ipfs-http-client'
+import { IPFSHTTPClient } from 'ipfs-http-client'
+
 import Axios from 'axios'
 import type PQueue from 'p-queue'
 import CID from 'cids'
 import { PrivateKey } from '@hiveio/dhive'
 import NodeSchedule from 'node-schedule'
-import { Models, MONGODB_URL, mongoOffchan } from './db'
+import { Models, MONGODB_URL } from './db'
 import { getReportPermlink, getRoundId, HiveClient } from '../utils'
 
 const IPFS_CLUSTER_URL = process.env.IPFS_CLUSTER_URL
@@ -27,7 +29,7 @@ const ndjsonParse = async function* (stream) {
 }
 
 export class CoreService {
-  ipfs: IPFS
+  ipfs: IPFSHTTPClient
   dhtQueue: PQueue
   pins: Collection
   peers: Collection

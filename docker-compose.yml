@@ -12,6 +12,10 @@ services:
       - cluster-rewarding-client
     env_file:
       - .env
+    command:
+      - npm
+      - run 
+      - start:client
     environment:
       IPFS_HOST: ipfs:5001
 

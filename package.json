@@ -44,9 +44,7 @@
     "test:report": "sensible-browser ./coverage/lcov-report/index.html",
     "test": "jest --coverage",
     "ts-node": "nodemon --exec \"node --experimental-specifier-resolution=node --loader ts-node/esm\"",
-    "start-workers": "concurrently \"npm run start-worker:hive-events\" \"npm run start-worker:background-scripts\"",
-    "start-worker:hive-events": "node dist/workers/hive-stream.js",
-    "start-worker:background-scripts": "node dist/workers/background-proc/index.js"
+    "start:client": "node --experimental-specifier-resolution=node dist/client"
   },
   "author": "",
   "license": "ISC"

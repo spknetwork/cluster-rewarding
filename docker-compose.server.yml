@@ -14,7 +14,7 @@ services:
       - .env
     environment:
       IPFS_HOST: ipfs:5001
-      MONGO_HOST: mongo:27022
+      MONGO_HOST: mongo:27017
   mongo:
     container_name: mongo_cluster_rewarding
     image: mongo:latest

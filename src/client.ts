@@ -1,12 +1,13 @@
 import 'dotenv/config'
 import NodeSchedule from 'node-schedule'
 import * as IPFS from 'ipfs-http-client'
+import { IPFSHTTPClient } from 'ipfs-http-client'
 import { PrivateKey } from '@hiveio/dhive'
 import { getReportPermlink, HiveClient } from './utils'
 
 
 class ClientService {
-    ipfs: IPFS
+    ipfs: IPFSHTTPClient
 
     constructor() {
 
