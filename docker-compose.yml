@@ -7,7 +7,7 @@ services:
     container_name: cluster-rewarding # what to label the container for docker ps
     restart: always # restart if failed, until we stop it ourselves
     depends_on:
-      - ipfs
+      - ipfs-cluster-client
     networks:
       - cluster-rewarding-client
     env_file:
@@ -17,7 +17,7 @@ services:
       - run 
       - start:client
     environment:
-      IPFS_HOST: ipfs:5001
+      IPFS_HOST: ipfs-cluster-client:5001
 
   ipfs-cluster:
     container_name: 3speak-cluster
@@ -30,7 +30,7 @@ services:
     networks:
       - cluster-rewarding-client
   ipfs-cluster-client:
-    container_name: ipfs-cluster
+    container_name: ipfs-instance
     image: ipfs/kubo:v0.19.0
     command:
       - daemon
