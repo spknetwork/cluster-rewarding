@@ -37,6 +37,15 @@ export class CoreService {
   _pinRefreshRunning: boolean
   // validationStats: Collection
 
+  constructor() {
+    this._pinRefreshRunning = false;
+
+    this.refreshPins = this.refreshPins.bind(this)
+    this.runAllocationVerification = this.runAllocationVerification.bind(this)
+    this.createReportParent = this.createReportParent.bind(this)
+    this.distributesVotes = this.distributesVotes.bind(this)
+  }
+
   async getPeers() {
     const response = await Axios.get(`${IPFS_CLUSTER_URL}/peers`, {
       responseType: 'stream',
@@ -124,7 +133,7 @@ export class CoreService {
   }
 
   async runAllocationVerification() {
-    await this.validationResults.deleteMany({})
+    console.log('running allocation verification')
     const startTime = new Date()
     const round_id = getRoundId()
     const peers = await this.peers.distinct('id', {
@@ -133,10 +142,13 @@ export class CoreService {
     const roundInfo = await this.validationRounds.findOne({
       round_id
     })
+    console.log(roundInfo)
     if(roundInfo) {
+      console.log('running allocation verification 2')
       return; //Round already generated.
     }
     if(this._pinRefreshRunning) {
+      console.log('running allocation verification 3')
       return;
     }
     // const peersIpfs = await this.peers.distinct('ipfs.id', {
@@ -153,7 +165,6 @@ export class CoreService {
               status: 'pinned',
             },
           },
-          round_id
         },
         {
           limit: 100,
@@ -230,24 +241,12 @@ export class CoreService {
       passCount: number
       failCount: number
       fileWeight: number
-      username: string
+      // username: string
     }> = {}
     let totalRedundantCopies = 0;
     for(let peerId of peersIpfs) {
       
-      let username;
-      for await(let result of this.ipfs.name.resolve(peerId)) {
-        // console.log(peerId)
-        if(result !== "/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn") {
-          console.log(IPFS.CID.parse(result.split('/')[2]))
-          
-          const data = await this.ipfs.dag.get(IPFS.CID.parse(result.split('/')[2]))
-          console.log(data.value)
-          if(data.value) {
-            username = data.value.username
-          }
-        }
-      }
+      
       const passCount = await this.validationResults.countDocuments({
         node_id: peerId,
         status: "success"
@@ -259,20 +258,19 @@ export class CoreService {
       const totalStoredFiles = await this.pins.countDocuments({
         peer_map: {
           $elemMatch: {
-            cluster_id: {
-              $in: peerId,
-            },
+            ipfs_peer_id: peerId,
             status: 'pinned',
           },
         },
-        round_id: getRoundId()
       })
-      console.log(totalStoredFiles)
       const passfail = passCount / (passCount + failCount)
       let power = Math.min((passfail / 0.25), 1)
       
       const fileWeight = power * totalStoredFiles
-      totalRedundantCopies = fileWeight + totalRedundantCopies;
+      if(fileWeight) {
+        totalRedundantCopies = fileWeight + totalRedundantCopies;
+      }
+      console.log(fileWeight)
       
       // const vote_weight = passCount / (passCount + failCount)
       peerMap[peerId] = {
@@ -280,16 +278,35 @@ export class CoreService {
         failCount,
         totalStoredFiles,
         fileWeight,
-        username
       }
     }
-    for(let obj of Object.values(peerMap)) {
+    for(let [peerId, obj] of Object.entries(peerMap)) {
+      let username;
+      for await(let result of this.ipfs.name.resolve(peerId)) {
+        // console.log(peerId)
+        if(result !== "/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn") {
+          console.log(IPFS.CID.parse(result.split('/')[2]))
+          
+          const data = await this.ipfs.dag.get(IPFS.CID.parse(result.split('/')[2]))
+          console.log(data.value)
+          if(data.value) {
+            username = data.value.username
+            break;
+          }
+        }
+      }
       const share = obj.fileWeight / totalRedundantCopies
       const vote_weight = Math.round(Math.min((share * voteSlots), 1) * 10_000)
+      console.log({
+        share,
+        vote_weight,
+        totalRedundantCopies,
+        obj
+      })
       try {
         const comments = await HiveClient.database.call('get_content_replies', [process.env.PARENT_REPORT_ACCOUNT, getReportPermlink()])
         for(let post of comments) {
-          if(post.author === obj.username) {
+          if(post.author === username) {
             const voteOp = await HiveClient.broadcast.vote({
               voter: "threespeak",
               author: post.author,
@@ -300,33 +317,36 @@ export class CoreService {
           }
         }
       } catch (ex) {
-        // console.log(ex)
+        console.log(ex)
         // console.log(Object.values(ex.jse_info).join(''))
       }
     }
   }
 
   async createReportParent() {
-    console.log('creating parent post', [process.env.PARENT_REPORT_ACCOUNT, getReportPermlink()])
+    console.log('Attempting to create parent post', [process.env.PARENT_REPORT_ACCOUNT, getReportPermlink()])
     try {
       const data = await HiveClient.database.call('get_content', [process.env.PARENT_REPORT_ACCOUNT, getReportPermlink()])
-      console.log(data)
     } catch(ex) {
       const date = new Date();
       // console.log(ex)
-      const postResult = await HiveClient.broadcast.comment({
-          author: process.env.HIVE_ACCOUNT,
-          title: `Daily cluster validation report (${date.getUTCMonth() + 1}/${date.getUTCDate()}/${date.getUTCFullYear()})`,
-          body: 'Comments below will contain basic ipfs cluster reporting information. Qualifying comments will be upvoted by @threespeak',
-          json_metadata: JSON.stringify({
-              tags: ['threespeak', 'cluster-rewarding'],
-              app: "cluster-rewarding/0.1.0"
-          }),
-          parent_author: process.env.PARENT_REPORT_ACCOUNT,
-          parent_permlink: '',
-          permlink: getReportPermlink()
-      }, PrivateKey.fromString(process.env.PARENT_REPORT_ACCOUNT_POSTING))
-      console.log(postResult)
+      try {
+        const postResult = await HiveClient.broadcast.comment({
+            author: process.env.PARENT_REPORT_ACCOUNT,
+            title: `Daily cluster validation report (${date.getUTCMonth() + 1}/${date.getUTCDate()}/${date.getUTCFullYear()})`,
+            body: 'Comments below will contain basic ipfs cluster reporting information. Qualifying comments will be upvoted by @threespeak',
+            json_metadata: JSON.stringify({
+                tags: ['threespeak', 'cluster-rewarding'],
+                app: "cluster-rewarding/0.1.0"
+            }),
+            parent_author: '',
+            parent_permlink: 'hive-181335',
+            permlink: getReportPermlink()
+        }, PrivateKey.fromString(process.env.PARENT_REPORT_ACCOUNT_POSTING))
+        console.log(postResult)
+      } catch (ex) {
+        console.log(ex)
+      }
     }
   }
 
@@ -359,12 +379,14 @@ export class CoreService {
     // await this.distributesVotes()
     
 
-    
+    // await this.runAllocationVerification()
+    // // await this.createReportParent()
+    // await this.distributesVotes()
     // NodeSchedule.registerJob('0 * * * *', this.getPeers); //Doesn't need round check
-    NodeSchedule.registerJob('0 */6 * * *', this.refreshPins)
-    NodeSchedule.registerJob('0 */3 * * *', this.runAllocationVerification)
-    NodeSchedule.registerJob('0 */3 * * *', this.createReportParent)
-    NodeSchedule.registerJob('0 */3 * * *', this.distributesVotes)
+    NodeSchedule.scheduleJob('0 */6 * * *', this.refreshPins)
+    NodeSchedule.scheduleJob('0 */1 * * *', this.runAllocationVerification)
+    NodeSchedule.scheduleJob('0 */1 * * *', this.createReportParent)
+    NodeSchedule.scheduleJob('0 */1 * * *', this.distributesVotes)
 
     // for await (let res of this.ipfs.dht.findProvs(
     //   'QmU1k7SUq1jBhWL1EoL5R1mk44dVvSm5QkScfpsLavWmoC',

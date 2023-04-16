@@ -46,13 +46,13 @@ class ClientService {
                     parent_author: process.env.PARENT_REPORT_ACCOUNT,
                     parent_permlink: getReportPermlink(),
                     permlink: `${getReportPermlink()}-${new Date().getTime()}`
-                }, PrivateKey.fromString(process.env.HIVE_ACCOUNT))
+                }, PrivateKey.fromString(process.env.HIVE_ACCOUNT_POSTING))
                 console.log(postResult)
             } else {
                 console.log('Already posted report')
             }
-        } catch {
-
+        } catch(ex) {
+            console.log(ex)
         }
     }
 
@@ -60,7 +60,7 @@ class ClientService {
         this.ipfs = IPFS.create()
 
         // await this.createDailyReport()
-        NodeSchedule.registerJob('0 * * * *', this.createDailyReport)
+        NodeSchedule.scheduleJob('0 * * * *', this.createDailyReport)
     }
 }
 

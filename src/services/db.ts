@@ -7,6 +7,11 @@ const MONGO_HOST = process.env.MONGO_HOST || '127.0.0.1:27017'
 export const MONGODB_URL = `mongodb://${MONGO_HOST}`
 export const mongo = new MongoClient(MONGODB_URL)
 
+mongoose.connect(MONGODB_URL, {
+    dbName: 'cluster-rewarding',
+    autoIndex: true,
+})
+
 const PinSchema = new Schema({})
 
 PinSchema.index({
