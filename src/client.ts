@@ -31,7 +31,7 @@ class ClientService {
                 console.log(comment)
                 const json_metadata = JSON.parse(comment.json_metadata)
                 console.log(json_metadata)
-                if(json_metadata.tags.includes('cluster-report') && comment.author === process.env.HIVE_ACCOUNT) {
+                if(json_metadata.tags.includes('cluster-rewarding') && comment.author === process.env.HIVE_ACCOUNT) {
                     reportExists = true
                 }
             }
@@ -46,7 +46,7 @@ class ClientService {
                     }),
                     parent_author: process.env.PARENT_REPORT_ACCOUNT,
                     parent_permlink: getReportPermlink(),
-                    permlink: `${getReportPermlink()}-${new Date().getTime()}`
+                    permlink: `re-${getReportPermlink()}-report-${process.env.HIVE_ACCOUNT}`
                 }, PrivateKey.fromString(process.env.HIVE_ACCOUNT_POSTING))
                 console.log(postResult)
             } else {
@@ -62,6 +62,8 @@ class ClientService {
 
         // await this.createDailyReport()
         NodeSchedule.scheduleJob('0 * * * *', this.createDailyReport)
+
+        // await this.createDailyReport()
     }
 }
 
