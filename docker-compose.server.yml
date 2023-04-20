@@ -31,6 +31,9 @@ services:
     command:
       - daemon
       - --enable-pubsub-experiment
+    ports: 
+      - 4011:4001
+      - 5011:5001
     networks:
       - cluster-rewarding-server
 
