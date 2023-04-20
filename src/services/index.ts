@@ -4,7 +4,7 @@ import * as IPFS from 'ipfs-http-client'
 import { IPFSHTTPClient } from 'ipfs-http-client'
 
 import Axios from 'axios'
-import type PQueue from 'p-queue'
+import PQueue from 'p-queue'
 import CID from 'cids'
 import { PrivateKey } from '@hiveio/dhive'
 import NodeSchedule from 'node-schedule'
@@ -106,6 +106,7 @@ export class CoreService {
   }
 
   async refreshPins() {
+    const queue = new PQueue({concurrency: 50})
     this._pinRefreshRunning = true;
     // await this.pins.deleteMany({})
 
@@ -115,23 +116,36 @@ export class CoreService {
     })
 
     const stream = response.data
-
-    for await (let json of ndjsonParse(stream)) {
-      try {
-        // const json = JSON.parse(jsonData.toString())
-        json.peer_map = Object.entries(json.peer_map).map(([key, value]) => {
-          return {
-            ...(value as any),
-            cluster_id: key,
+    const round_id = getRoundId();
+    
+    try {
+      for await (let json of ndjsonParse(stream)) {
+        queue.add(async () => {
+          try {
+            // const json = JSON.parse(jsonData.toString())
+            json.peer_map = Object.entries(json.peer_map).map(([key, value]) => {
+              return {
+                ...(value as any),
+                cluster_id: key,
+              }
+            })
+            json.round_id = round_id
+            await this.pins.insertOne(json)
+          } catch (ex) {
+            console.log(ex)
+            // console.log(jsonData.toString())
+            //End
           }
         })
-        json.round_id = getRoundId()
-        await this.pins.insertOne(json)
-      } catch (ex) {
-        console.log(ex)
-        // console.log(jsonData.toString())
-        //End
       }
+      await queue.onIdle()
+      await this.pins.deleteMany({
+        round_id: {
+          $ne: round_id
+        }
+      })
+    } catch (ex) {
+      console.log(ex)
     }
     this._pinRefreshRunning = false;
   }
@@ -393,6 +407,8 @@ export class CoreService {
     NodeSchedule.scheduleJob('0 */1 * * *', this.createReportParent)
     NodeSchedule.scheduleJob('0 */1 * * *', this.distributesVotes)
     NodeSchedule.scheduleJob('0 */1 * * *', this.getPeers)
+
+    this.getPeers()
 
     // for await (let res of this.ipfs.dht.findProvs(
     //   'QmU1k7SUq1jBhWL1EoL5R1mk44dVvSm5QkScfpsLavWmoC',
