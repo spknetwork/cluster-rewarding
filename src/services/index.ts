@@ -338,8 +338,13 @@ export class CoreService {
           const comments = await HiveClient.database.call('get_content_replies', [process.env.PARENT_REPORT_ACCOUNT, getReportPermlink()])
           for(let post of comments) {
             if(post.author === username) {
+              if(!!post.active_votes.find(e => {
+                return e.voter === process.env.VOTER_ACCOUNT
+              })) {
+                continue;
+              }
               const voteOp = await HiveClient.broadcast.vote({
-                voter: "threespeak",
+                voter: process.env.VOTER_ACCOUNT,
                 author: post.author,
                 permlink: post.permlink,
                 weight: vote_weight
@@ -435,7 +440,6 @@ export class CoreService {
       await this.runAllocationVerification()
       await this.distributeVotes()
     })
-
 
 
     // for await (let res of this.ipfs.dht.findProvs(
