@@ -46,7 +46,7 @@ export class CoreService {
     this.refreshPins = this.refreshPins.bind(this)
     this.runAllocationVerification = this.runAllocationVerification.bind(this)
     this.createReportParent = this.createReportParent.bind(this)
-    this.distributesVotes = this.distributesVotes.bind(this)
+    this.distributeVotes = this.distributeVotes.bind(this)
     this.getPeers = this.getPeers.bind(this)
   }
 
@@ -247,7 +247,7 @@ export class CoreService {
     }
   }
 
-  async distributesVotes() {
+  async distributeVotes() {
     const voteSlots = 3;
 
     const round_id = getRoundId()
@@ -427,19 +427,13 @@ export class CoreService {
       console.log(ex)
     }
 
-    // await this.distributesVotes()
     
-
-    // await this.runAllocationVerification()
-    // // await this.createReportParent()
-    // await this.distributesVotes()
-    // NodeSchedule.registerJob('0 * * * *', this.getPeers); //Doesn't need round check
     NodeSchedule.scheduleJob('0 */6 * * *', this.refreshPins)
     NodeSchedule.scheduleJob('0 */1 * * *', this.getPeers)
     NodeSchedule.scheduleJob('0 */1 * * *', async() => {
       await this.createReportParent()
       await this.runAllocationVerification()
-      await this.distributesVotes
+      await this.distributeVotes()
     })
 
 
