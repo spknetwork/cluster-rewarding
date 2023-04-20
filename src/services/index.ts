@@ -239,10 +239,19 @@ export class CoreService {
     })
   }
 
+  async pingIpfsNode(peerId) {
+    try {
+      for await(let _ of this.ipfs.ping(peerId)) {}
+    } catch {
+
+    }
+  }
+
   async distributesVotes() {
     const voteSlots = 3;
 
     const round_id = getRoundId()
+    const queue = new PQueue({concurrency: 5})
     const roundInfo = await this.validationRounds.findOne({
       round_id
     })
@@ -288,7 +297,7 @@ export class CoreService {
       if(fileWeight) {
         totalRedundantCopies = fileWeight + totalRedundantCopies;
       }
-      console.log(fileWeight)
+      console.log('fileWeight', fileWeight)
       
       // const vote_weight = passCount / (passCount + failCount)
       peerMap[peerId] = {
@@ -299,46 +308,50 @@ export class CoreService {
       }
     }
     for(let [peerId, obj] of Object.entries(peerMap)) {
-      let username;
-      for await(let result of this.ipfs.name.resolve(peerId)) {
-        // console.log(peerId)
-        if(result !== "/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn") {
-          console.log(IPFS.CID.parse(result.split('/')[2]))
-          
-          const data = await this.ipfs.dag.get(IPFS.CID.parse(result.split('/')[2]))
-          console.log(data.value)
-          if(data.value) {
-            username = data.value.username
-            break;
+      queue.add(async() => {
+        this.pingIpfsNode(peerId)
+        let username;
+        for await(let result of this.ipfs.name.resolve(peerId)) {
+          // console.log(peerId)
+          if(result !== "/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn") {
+            console.log(IPFS.CID.parse(result.split('/')[2]))
+            
+            const data = await this.ipfs.dag.get(IPFS.CID.parse(result.split('/')[2]))
+            console.log(data.value)
+            if(data.value) {
+              username = data.value.username
+              break;
+            }
           }
         }
-      }
-      const share = obj.fileWeight / totalRedundantCopies
-      const vote_weight = Math.round(Math.min((share * voteSlots), 1) * 10_000)
-      console.log({
-        share,
-        vote_weight,
-        totalRedundantCopies,
-        obj
+        const share = obj.fileWeight / totalRedundantCopies
+        const vote_weight = Math.round(Math.min((share * voteSlots), 1) * 10_000)
+        console.log({
+          share,
+          vote_weight,
+          totalRedundantCopies,
+          obj
+        })
+        try {
+          const comments = await HiveClient.database.call('get_content_replies', [process.env.PARENT_REPORT_ACCOUNT, getReportPermlink()])
+          for(let post of comments) {
+            if(post.author === username) {
+              const voteOp = await HiveClient.broadcast.vote({
+                voter: "threespeak",
+                author: post.author,
+                permlink: post.permlink,
+                weight: vote_weight
+              }, PrivateKey.from(process.env.VOTER_ACCOUNT_POSTING))
+              console.log(voteOp, vote_weight)
+            }
+          }
+        } catch (ex) {
+          console.log(ex)
+          // console.log(Object.values(ex.jse_info).join(''))
+        }
       })
-      try {
-        const comments = await HiveClient.database.call('get_content_replies', [process.env.PARENT_REPORT_ACCOUNT, getReportPermlink()])
-        for(let post of comments) {
-          if(post.author === username) {
-            const voteOp = await HiveClient.broadcast.vote({
-              voter: "threespeak",
-              author: post.author,
-              permlink: post.permlink,
-              weight: vote_weight
-            }, PrivateKey.from(process.env.VOTER_ACCOUNT_POSTING))
-            console.log(voteOp, vote_weight)
-          }
-        }
-      } catch (ex) {
-        console.log(ex)
-        // console.log(Object.values(ex.jse_info).join(''))
-      }
     }
+    await queue.onIdle();
   }
 
   async createReportParent() {
@@ -403,12 +416,14 @@ export class CoreService {
     // await this.distributesVotes()
     // NodeSchedule.registerJob('0 * * * *', this.getPeers); //Doesn't need round check
     NodeSchedule.scheduleJob('0 */6 * * *', this.refreshPins)
-    NodeSchedule.scheduleJob('0 */1 * * *', this.runAllocationVerification)
-    NodeSchedule.scheduleJob('0 */1 * * *', this.createReportParent)
-    NodeSchedule.scheduleJob('0 */1 * * *', this.distributesVotes)
     NodeSchedule.scheduleJob('0 */1 * * *', this.getPeers)
+    NodeSchedule.scheduleJob('0 */1 * * *', async() => {
+      await this.createReportParent()
+      await this.runAllocationVerification()
+      await this.distributesVotes
+    })
 
-    this.getPeers()
+
 
     // for await (let res of this.ipfs.dht.findProvs(
     //   'QmU1k7SUq1jBhWL1EoL5R1mk44dVvSm5QkScfpsLavWmoC',
