@@ -60,7 +60,7 @@ class ClientService {
 
 
     async start() {
-        this.ipfs = IPFS.create()
+        this.ipfs = IPFS.create({ url: process.env.IPFS_HOST || 'http://127.0.0.1:5001' })
 
         this.registerNode()
         // await this.createDailyReport()

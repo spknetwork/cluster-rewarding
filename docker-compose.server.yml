@@ -13,7 +13,7 @@ services:
     env_file:
       - .env
     environment:
-      IPFS_HOST: ipfs:5001
+      IPFS_HOST: http://ipfs:5001
       MONGO_HOST: mongo:27017
   mongo:
     container_name: mongo_cluster_rewarding

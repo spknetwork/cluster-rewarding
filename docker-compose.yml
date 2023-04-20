@@ -17,7 +17,7 @@ services:
       - run 
       - start:client
     environment:
-      IPFS_HOST: ipfs-cluster-client:5001
+      IPFS_HOST: http://ipfs-cluster-client:5001
 
   ipfs-cluster:
     container_name: 3speak-cluster

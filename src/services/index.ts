@@ -371,7 +371,7 @@ export class CoreService {
   async start() {
     const url = MONGODB_URL
     const mongo = new MongoClient(url)
-    this.ipfs = IPFS.create()
+    this.ipfs = IPFS.create({ url: process.env.IPFS_HOST || 'http://127.0.0.1:5001' })
     const PQueue = (await import('p-queue')).default
     this.dhtQueue = new PQueue({ concurrency: 50 })
 
