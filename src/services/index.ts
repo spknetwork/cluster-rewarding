@@ -13,7 +13,7 @@ import { getReportPermlink, getRoundId, HiveClient } from '../utils'
 
 const IPFS_CLUSTER_URL = process.env.IPFS_CLUSTER_URL
 
-const ndjsonParse = async function* (stream) {
+export const ndjsonParse = async function* (stream) {
   const matcher = /\r?\n/
   const decoder = new TextDecoder('utf8')
   let buffer = ''
@@ -37,6 +37,7 @@ export class CoreService {
   validationResults: Collection
   locks: Collection
   _pinRefreshRunning: boolean
+  markers: Collection
   // validationStats: Collection
 
   constructor() {
@@ -46,6 +47,7 @@ export class CoreService {
     this.runAllocationVerification = this.runAllocationVerification.bind(this)
     this.createReportParent = this.createReportParent.bind(this)
     this.distributesVotes = this.distributesVotes.bind(this)
+    this.getPeers = this.getPeers.bind(this)
   }
 
   async getPeers() {
@@ -367,6 +369,7 @@ export class CoreService {
     this.validationRounds = db.collection('validation_rounds')
     this.validationResults = db.collection('validation_results')
     this.locks = db.collection('locks')
+    this.markers = db.collection('markers')
     // this.validationStats = db.collection('validation_stats')
     
     // await this.createReportParent()
@@ -389,6 +392,7 @@ export class CoreService {
     NodeSchedule.scheduleJob('0 */1 * * *', this.runAllocationVerification)
     NodeSchedule.scheduleJob('0 */1 * * *', this.createReportParent)
     NodeSchedule.scheduleJob('0 */1 * * *', this.distributesVotes)
+    NodeSchedule.scheduleJob('0 */1 * * *', this.getPeers)
 
     // for await (let res of this.ipfs.dht.findProvs(
     //   'QmU1k7SUq1jBhWL1EoL5R1mk44dVvSm5QkScfpsLavWmoC',
