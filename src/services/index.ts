@@ -6,7 +6,7 @@ import { IPFSHTTPClient } from 'ipfs-http-client'
 import Axios from 'axios'
 import PQueue from 'p-queue'
 import CID from 'cids'
-import { PrivateKey } from '@hiveio/dhive'
+import { cryptoUtils, PrivateKey } from '@hiveio/dhive'
 import NodeSchedule from 'node-schedule'
 import { Models, MONGODB_URL } from './db'
 import { getReportPermlink, getRoundId, HiveClient } from '../utils'
@@ -268,6 +268,7 @@ export class CoreService {
       passCount: number
       failCount: number
       fileWeight: number
+      dhtPassFail: number
       // username: string
     }> = {}
     let totalRedundantCopies = 0;
@@ -305,6 +306,7 @@ export class CoreService {
         failCount,
         totalStoredFiles,
         fileWeight,
+        dhtPassFail: passfail
       }
     }
     for(let [peerId, obj] of Object.entries(peerMap)) {
@@ -343,6 +345,23 @@ export class CoreService {
                 weight: vote_weight
               }, PrivateKey.from(process.env.VOTER_ACCOUNT_POSTING))
               console.log(voteOp, vote_weight)
+              await HiveClient.broadcast.comment({
+                author: process.env.PARENT_REPORT_ACCOUNT,
+                title: ``,
+                body: 
+                `Observation report\n` +
+                `File score: ${obj.fileWeight}\n` +
+                `Network dominance score: ${share}\n` +
+                `DHT score: ${obj.dhtPassFail}`
+                ,
+                json_metadata: JSON.stringify({
+                    tags: ['threespeak', 'cluster-rewarding'],
+                    app: "cluster-rewarding/0.1.0"
+                }),
+                parent_author: post.author,
+                parent_permlink: post.permlink,
+                permlink: `re-${cryptoUtils.sha256(`${post.author}-${post.permlink}`).toString('hex')}`
+              }, PrivateKey.fromString(process.env.PARENT_REPORT_ACCOUNT_POSTING))
             }
           }
         } catch (ex) {
