@@ -20,7 +20,7 @@ class ClientService {
         console.log(cid)
 
         const publishResult = await this.ipfs.name.publish(cid)
-        console.log(publishResult)
+        console.log('node info update', publishResult)
     }
 
     async createDailyReport() {
@@ -57,9 +57,12 @@ class ClientService {
         }
     }
 
+
+
     async start() {
         this.ipfs = IPFS.create()
 
+        this.registerNode()
         // await this.createDailyReport()
         NodeSchedule.scheduleJob('0 * * * *', this.createDailyReport)
 
