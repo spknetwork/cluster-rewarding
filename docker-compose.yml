@@ -28,6 +28,8 @@ services:
       - run 
       - --init 
       - https://ipfs.3speak.tv/ipns/ipfs-cluster.3speak.tv
+    environment:
+      - CLUSTER_IPFSHTTP_NODEMULTIADDRESS: /dns4/ipfs-cluster-client/tcp/5001
     networks:
       - cluster-rewarding-client
     volumes:
