@@ -20,7 +20,7 @@ services:
       IPFS_HOST: http://ipfs-cluster-client:5001
 
   ipfs-cluster:
-    container_name: 3speak-cluster
+    container_name: cluster-rewarding-follower
     image: ipfs/ipfs-cluster:1.0.6
     entrypoint:
       - /usr/local/bin/ipfs-cluster-follow
@@ -29,12 +29,18 @@ services:
       - --init https://ipfs.3speak.tv/ipns/ipfs-cluster.3speak.tv
     networks:
       - cluster-rewarding-client
+    volumes:
+      - ./data/ipfs-cluster:/data/ipfs-cluster
   ipfs-cluster-client:
-    container_name: ipfs-instance
+    container_name: cluster-rewarding-ipfs
     image: ipfs/kubo:v0.19.0
     command:
       - daemon
       - --enable-pubsub-experiment
+    environment: 
+      IPFS_PATH: /etc/ipfs
+    volumes:
+      - ./data/ipfs:/etc/ipfs
     ports: 
       - 4001:4001
       - 5011:5001
