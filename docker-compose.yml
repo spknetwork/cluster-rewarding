@@ -26,7 +26,8 @@ services:
       - /usr/local/bin/ipfs-cluster-follow
       - 3speak-cluster 
       - run 
-      - --init https://ipfs.3speak.tv/ipns/ipfs-cluster.3speak.tv
+      - --init 
+      - https://ipfs.3speak.tv/ipns/ipfs-cluster.3speak.tv
     networks:
       - cluster-rewarding-client
     volumes:
