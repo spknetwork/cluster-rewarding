@@ -130,7 +130,12 @@ export class CoreService {
               }
             })
             json.round_id = round_id
-            await this.pins.insertOne(json)
+            if(!(await this.pins.findOne({
+              cid: json.cid,
+              round_id: round_id
+            }))) {
+              await this.pins.insertOne(json)
+            }
           } catch (ex) {
             console.log(ex)
             // console.log(jsonData.toString())
@@ -185,7 +190,7 @@ export class CoreService {
           },
         },
         {
-          limit: 100,
+          limit: 200,
         },
       )
       .toArray()
@@ -248,7 +253,7 @@ export class CoreService {
   }
 
   async distributeVotes() {
-    const voteSlots = 3;
+    const voteSlots = 1.5;
 
     const round_id = getRoundId()
     const queue = new PQueue({concurrency: 5})
@@ -343,30 +348,34 @@ export class CoreService {
               })) {
                 continue;
               }
-              const voteOp = await HiveClient.broadcast.vote({
-                voter: process.env.VOTER_ACCOUNT,
-                author: post.author,
-                permlink: post.permlink,
-                weight: vote_weight
-              }, PrivateKey.from(process.env.VOTER_ACCOUNT_POSTING))
-              console.log(voteOp, vote_weight)
-              await HiveClient.broadcast.comment({
-                author: process.env.PARENT_REPORT_ACCOUNT,
-                title: ``,
-                body: 
-                `Observation report\n` +
-                `File score: ${obj.fileWeight}\n` +
-                `Network dominance score: ${share}\n` +
-                `DHT score: ${obj.dhtPassFail}`
-                ,
-                json_metadata: JSON.stringify({
-                    tags: ['threespeak', 'cluster-rewarding'],
-                    app: "cluster-rewarding/0.1.0"
-                }),
-                parent_author: post.author,
-                parent_permlink: post.permlink,
-                permlink: `re-${cryptoUtils.sha256(`${post.author}-${post.permlink}`).toString('hex')}`
-              }, PrivateKey.fromString(process.env.PARENT_REPORT_ACCOUNT_POSTING))
+              try {
+                const voteOp = await HiveClient.broadcast.vote({
+                  voter: process.env.VOTER_ACCOUNT,
+                  author: post.author,
+                  permlink: post.permlink,
+                  weight: vote_weight
+                }, PrivateKey.from(process.env.VOTER_ACCOUNT_POSTING))
+                console.log(voteOp, vote_weight)
+                await HiveClient.broadcast.comment({
+                  author: process.env.PARENT_REPORT_ACCOUNT,
+                  title: ``,
+                  body: 
+                  `Observation report\n` +
+                  `File score: ${obj.fileWeight}\n` +
+                  `Network dominance score: ${share}\n` +
+                  `DHT score: ${obj.dhtPassFail}`
+                  ,
+                  json_metadata: JSON.stringify({
+                      tags: ['threespeak', 'cluster-rewarding'],
+                      app: "cluster-rewarding/0.1.0"
+                  }),
+                  parent_author: post.author,
+                  parent_permlink: post.permlink,
+                  permlink: `re-${cryptoUtils.sha256(`${post.author}-${post.permlink}`).toString('hex')}`
+                }, PrivateKey.fromString(process.env.PARENT_REPORT_ACCOUNT_POSTING))
+              } catch (ex) {
+                console.log(ex)
+              }
             }
           }
         } catch (ex) {
@@ -434,12 +443,16 @@ export class CoreService {
 
     
     NodeSchedule.scheduleJob('0 */6 * * *', this.refreshPins)
-    NodeSchedule.scheduleJob('0 */1 * * *', this.getPeers)
     NodeSchedule.scheduleJob('0 */1 * * *', async() => {
+      await this.getPeers()
       await this.createReportParent()
       await this.runAllocationVerification()
       await this.distributeVotes()
     })
+    
+    // await this.runAllocationVerification()
+    // console.log('running')
+    // await this.distributeVotes()
 
 
     // for await (let res of this.ipfs.dht.findProvs(
