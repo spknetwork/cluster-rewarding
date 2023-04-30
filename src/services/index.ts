@@ -253,7 +253,7 @@ export class CoreService {
   }
 
   async distributeVotes() {
-    const voteSlots = 1.5;
+    const voteSlots = 2;
 
     const round_id = getRoundId()
     const queue = new PQueue({concurrency: 5})
