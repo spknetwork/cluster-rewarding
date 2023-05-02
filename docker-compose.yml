@@ -42,6 +42,8 @@ services:
     command:
       - daemon
       - --enable-pubsub-experiment
+      - --init-profile
+      - server
     environment: 
       IPFS_PATH: /etc/ipfs
     volumes:
