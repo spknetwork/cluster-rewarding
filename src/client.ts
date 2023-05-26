@@ -31,7 +31,7 @@ class ClientService {
                 console.log(comment)
                 const json_metadata = JSON.parse(comment.json_metadata)
                 console.log(json_metadata)
-                if(json_metadata.tags.includes('cluster-rewarding') && comment.author === process.env.HIVE_ACCOUNT) {
+                if(json_metadata.tags && json_metadata.tags.includes('cluster-rewarding') && comment.author === process.env.HIVE_ACCOUNT) {
                     reportExists = true
                 }
             }
@@ -73,5 +73,5 @@ class ClientService {
 void (async () => {
     const client = new ClientService()
     await client.start()
-    
+
 })()
